@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+runs/
+output/
+.ipynb_checkpoints/
+*.pt
+!yolov8n-seg.pt

@@ -1,0 +1,13 @@
+train: D:/Kazim/Teeth Detection.v2i.yolov8/train/images
+val: D:/Kazim/Teeth Detection.v2i.yolov8/valid/images
+test: D:/Kazim/Teeth Detection.v2i.yolov8/test/images
+
+nc: 1
+names: ['Plaque']
+
+roboflow:
+  workspace: amir-hxydn
+  project: teeth-detection-xdkru-aqwzm
+  version: 2
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/amir-hxydn/teeth-detection-xdkru-aqwzm/dataset/2

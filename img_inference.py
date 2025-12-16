@@ -1,0 +1,165 @@
+import cv2
+from ultralytics import YOLO
+import os
+import glob
+import matplotlib.pyplot as plt
+import numpy as np
+
+class PlaqueSegmenter:
+    def __init__(self, model_path='runs/segment/plaque-segmentation/weights/best.pt'):
+        """
+        Initialize the plaque segmenter with a trained segmentation model
+        
+        Args:
+            model_path (str): Path to the trained model weights (.pt file)
+        """
+        self.model = YOLO(model_path)
+        self.color = (0, 100, 0)  # Yellow color for plaque (BGR format)
+    
+    def predict(self, image_path, conf_threshold=0.5):
+        """
+        Run prediction on a single image to segment plaque
+        
+        Args:
+            image_path (str): Path to the image file
+            conf_threshold (float): Confidence threshold for detection
+            
+        Returns:
+            tuple: (annotated_image, segmentation_results)
+        """
+        # Read image
+        img = cv2.imread(image_path)
+        if img is None:
+            raise FileNotFoundError(f"Image not found at {image_path}")
+        
+        # Run prediction
+        results = self.model.predict(img, conf=conf_threshold)
+        
+        # Annotate image with segmentation masks
+        annotated_img = self._annotate_image(img.copy(), results[0])
+        
+        return annotated_img, results[0]
+    
+    def _annotate_image(self, image, result):
+        """Draw segmentation masks for plaque"""
+        for i, mask in enumerate(result.masks or []):
+            if mask is None:
+                continue
+
+            # Get confidence
+            conf = float(result.boxes[i].conf[0])
+            label = f"Plaque: {conf:.2f}"
+
+            # Draw the mask (as a polygon outline)
+            mask_points = mask.xy[0]  # Polygon points in pixel coordinates
+            mask_points = np.array(mask_points, dtype=np.int32)
+            cv2.polylines(image, [mask_points], isClosed=True, color=self.color, thickness=2)
+
+            # Optionally, fill the mask with a semi-transparent color
+            overlay = image.copy()
+            cv2.fillPoly(overlay, [mask_points], self.color)
+            cv2.addWeighted(overlay, 0.3, image, 0.7, 0, image)
+
+            # Draw the label near the mask
+            x, y = mask_points[0]  # Use the top-left point of the mask
+            (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+            cv2.rectangle(image, (x, y - 20), (x + w, y), self.color, -1)
+            cv2.putText(image, label, (x, y - 5), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+        
+        return image
+    
+    def test_single_image(self, image_path, output_dir='output', conf_threshold=0.5):
+        """
+        Test a single image and save/show the results
+        
+        Args:
+            image_path (str): Path to the image file
+            output_dir (str): Directory to save results
+            conf_threshold (float): Confidence threshold
+        """
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Run prediction
+        annotated_img, results = self.predict(image_path, conf_threshold)
+        
+        # Save the annotated image
+        output_path = os.path.join(output_dir, os.path.basename(image_path))
+        cv2.imwrite(output_path, annotated_img)
+        print(f"Results saved to: {output_path}")
+        
+        # Display results
+        self._display_results(image_path, annotated_img, results)
+    
+    def test_directory(self, dir_path, output_dir='output', conf_threshold=0.5):
+        """
+        Test all images in a directory
+        
+        Args:
+            dir_path (str): Path to directory containing images
+            output_dir (str): Directory to save results
+            conf_threshold (float): Confidence threshold
+        """
+        # Get all image files in directory
+        image_paths = glob.glob(os.path.join(dir_path, '*.jpg')) + \
+                     glob.glob(os.path.join(dir_path, '*.png')) + \
+                     glob.glob(os.path.join(dir_path, '*.jpeg'))
+        
+        if not image_paths:
+            print(f"No images found in {dir_path}")
+            return
+        
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Process each image
+        for img_path in image_paths:
+            try:
+                self.test_single_image(img_path, output_dir, conf_threshold)
+            except Exception as e:
+                print(f"Error processing {img_path}: {str(e)}")
+    
+    def _display_results(self, original_path, annotated_img, results):
+        """Display original and annotated images side by side"""
+        # Convert BGR to RGB for matplotlib
+        annotated_img_rgb = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
+        original_img = cv2.cvtColor(cv2.imread(original_path), cv2.COLOR_BGR2RGB)
+        
+        # Create figure
+        plt.figure(figsize=(15, 8))
+        
+        # Show original image
+        plt.subplot(1, 2, 1)
+        plt.imshow(original_img)
+        plt.title('Original Image')
+        plt.axis('off')
+        
+        # Show annotated image
+        plt.subplot(1, 2, 2)
+        plt.imshow(annotated_img_rgb)
+        plt.title('Segmented Plaque')
+        plt.axis('off')
+        
+        # Print segmentation summary
+        print("\nSegmentation Summary:")
+        print(f"Image: {original_path}")
+        print(f"Plaque Segments: {len(results.masks) if results.masks is not None else 0}")
+        for i, mask in enumerate(results.masks or []):
+            conf = float(results.boxes[i].conf[0])
+            print(f"- Plaque: confidence {conf:.2f}")
+        
+        plt.tight_layout()
+        plt.show()
+
+if __name__ == '__main__':
+    # Initialize segmenter
+    segmenter = PlaqueSegmenter(model_path='runs/segment/plaque-segmentation3/weights/best.pt')
+    
+    # Test a single image
+    print("Testing single image...")
+    segmenter.test_single_image('Teeth Detection.v2i.yolov8/test/images/001_00110_01_a091_jpg.rf.f9d332c0bb23b31bee88c11ec02abdc3.jpg')
+    
+    # Or test all images in a directory
+    # print("\nTesting directory of images...")
+    # segmenter.test_directory('test_images')
